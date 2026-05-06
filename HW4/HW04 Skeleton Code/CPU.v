@@ -59,6 +59,10 @@ module CPU(
 	reg [31:0]	PC;
 	reg [31:0]	PC_next;
 
+	// state 추가!!!!
+	reg [2:0] state;
+	reg [2:0] state_next;
+
 	// Define the wires
 
 	assign halt				= (inst == 32'b0);
@@ -97,6 +101,7 @@ module CPU(
 
 	always @(*) begin
 		wr_addr = SavePC ? 5'b11111 : (RegDst ? rd : rt);
+		// ALU 공유!!
 		wr_data = SavePC ? PC+4 : (MemtoReg ? mem_read_data : alu_result);
 
 		// Define PC
@@ -112,10 +117,12 @@ module CPU(
 			end
 		end
 		else begin
-			if(Branch && alu_result) begin // 이 부분 확인 필요
+			if(Branch && alu_result) begin 
+				// ALU 공유!!
 				PC_next = PC + 4 + (ext_imm << 2); 
 			end
 			else begin
+				// ALU 공유!!
 				PC_next = PC + 4;
 			end
 		end
@@ -125,11 +132,16 @@ module CPU(
 
 	// Update the Clock
 	always @(posedge clk) begin
-		if (rst)	PC <= 0;
+		if (rst) begin
+			PC <= 0;
+			state <= 0;
+		end
 		else begin
-			PC <= PC_next;
+			//PC <= PC_next;
+			state <= state_next;
 		end
 	end
+	
 	
 
 	CTRL ctrl (
