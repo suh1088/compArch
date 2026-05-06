@@ -1,0 +1,5 @@
+iverilog ALU.v RF.v TOP.v TOP_tb.v
+gtkwave waveform.vcd
+
+iverilog CPU_tb.v CPU.v ALU.v CTRL.v MEM.v RF.v GLOBAL.v
+./a.out
