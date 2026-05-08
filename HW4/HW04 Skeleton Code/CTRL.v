@@ -82,25 +82,31 @@ module CTRL(
 
 			`ST_ID: begin 
 				if(opcode == `OP_J || (opcode == 0 && funct == `FUNCT_JR)) state_next <= `ST_IF;
-				state_next <= `ST_EX;
+				else if(opcode == `OP_JAL) state_next <= `ST_WB;
+				else state_next <= `ST_EX;
 
+
+				// JAL
+				// 현재 PC값 저장
+				if(opcode == `OP_JAL) begin
+					SavePC = 1;
+					RegWrite = 1;
+				end
+				// J JR
+				// PC값 변경
+				else if(opcode == `OP_J || (opcode == 0 && funct == `FUNCT_JR)) begin
+					PCWrite = 1;
+					PCSource = 2;
+					JR = opcode == 0 && funct == `FUNCT_JR;
+				end
+				// 일반적인 ID
 				// RF에서 읽어오기
 				RegDst = (opcode == 0);
-
-				// Jump
-				// JR 점프 시점에 ra 레지스터 저장까지 실행
-
-				//JAL ID에서 레지스터 저장, EX에서 점프
-				PCWrite = (opcode == `OP_J || (opcode == 00 && funct == `FUNCT_JR));
-				PCSource = 2;
-				SavePC = opcode == `OP_JAL;
-				RegWrite = opcode == `OP_JAL;
-				JR = opcode == 0 && funct == `FUNCT_JR;
 			end
 
 			`ST_EX:  begin
 				if(opcode == `OP_LW || opcode == `OP_SW) state_next <= `ST_MEM;
-				else if(opcode == `JAL) state_next <= `ST_IF;
+				else if(opcode == `OP_BEQ || opcode == `OP_BNE) state_next <= `ST_IF;
 				else state_next <= `ST_WB;
 
 				//branch
