@@ -10,7 +10,6 @@ module CPU(
 	
 	// Split the instructions
 	// Instruction-related wires
-	wire [31:0]		inst;
 	wire [5:0]		opcode;
 	wire [4:0]		rs;
 	wire [4:0]		rt;
@@ -22,17 +21,21 @@ module CPU(
 
 	// Control-related wires
 	wire			RegDst;
-	wire			Jump;
-	wire 			Branch;
 	wire 			JR;
 	wire			MemRead;
 	wire			MemtoReg;
 	wire 			MemWrite;
-	wire			ALUSrc;
 	wire			SignExtend;
 	wire			RegWrite;
 	wire [3:0]		ALUOp;
 	wire			SavePC;
+	wire			ALUSrcA;
+	wire [1:0]		ALUSrcB;
+	wire [1:0]		PCSource;
+	wire			IRWrite;
+	wire			IorD;
+	wire			PCWrite;
+	wire			PCWriteCond;
 
 	// Sign extend the immediate
 	wire [31:0]		ext_imm;
@@ -61,15 +64,58 @@ module CPU(
 
 	// state 추가!!!!
 	reg [2:0] state;
-	reg [2:0] state_next;
+	wire [2:0] state_next;  // (reg → wire 변경) 이부분 다시한번 확인
+
+	// 멀티사이클을 위한 중간 래지스터
+	reg [31:0]		inst;
+	reg [31:0]		mem_data_reg;
+	reg [31:0]		A;
+	reg [31:0]		B;
+	reg [31:0]		ALUOut;
+
+	//추가됨
+	// wire ALUSrcA          
+	// wire [1:0] ALUSrcB    
+	// wire [1:0] PCSource   
+	// wire IRWrite          
+	// wire IorD             
+	// wire PCWrite          
+	// wire PCWriteCond      
+
+	//변경됨
+	// reg [2:0] state_next -> wire [2:0] state_next 
+	// reg [31:0]		inst;
+	// reg [31:0]		mem_read_data;
+	// reg [31:0]		operand1;
+	// reg [31:0]		operand2;
+	// reg [31:0]		ALUOut;
+
+	//삭제됨
+	// wire Jump             - PCSource로 통합
+	// wire Branch           - PCSource로 통합
+	// wire ALUSrc           - ALUSrcA / ALUSrcB로 분리
 
 	// Define the wires
 
 	assign halt				= (inst == 32'b0);
 
+	//멀티사이클!! 할당 시작 !!! 여기서부터 구현 시작
+	// inst;
+	assign opcode = inst[31:26];
+	assign rs = inst[25:21];
+	assign rt = inst[20:16];
+	assign rd = inst[15:11];
+	assign shamt = inst[10:6];
+	assign funct = inst[5:0];
+	assign immi = inst[15:0];
+	assign immj = inst[25:0];
+
+	// Sign extend the immediate 
+	// trouble shooting
+	assign ext_imm = SignExtend ? {{16{immi[15]}}, immi} : {16'b0, immi};
 
 
-   // 할당 시작
+   	// 싱글 사이클!! 할당 시작
 
 	// inst;
 	assign opcode = inst[31:26];
@@ -147,18 +193,24 @@ module CPU(
 	CTRL ctrl (
 		.opcode(opcode),
 		.funct(funct),
+		.state(state),
+		.state_next(state_next),
 		.RegDst(RegDst),
-		.Jump(Jump),
-		.Branch(Branch),
 		.JR(JR),
 		.MemRead(MemRead),
 		.MemtoReg(MemtoReg),
 		.MemWrite(MemWrite),
-		.ALUSrc(ALUSrc),
 		.SignExtend(SignExtend),
 		.RegWrite(RegWrite),
 		.ALUOp(ALUOp),
-		.SavePC(SavePC)
+		.SavePC(SavePC),
+		.ALUSrcA(ALUSrcA),
+		.ALUSrcB(ALUSrcB),
+		.PCSource(PCSource),
+		.IRWrite(IRWrite),
+		.IorD(IorD),
+		.PCWrite(PCWrite),
+		.PCWriteCond(PCWriteCond)
 	);
 
 	RF rf (
@@ -176,8 +228,6 @@ module CPU(
 	MEM mem (
 		.clk(clk),
 		.rst(rst),
-		.inst_addr(PC),
-		.inst(inst),
 		.mem_addr(mem_addr),
 		.MemWrite(MemWrite),
 		.mem_write_data(mem_write_data),
