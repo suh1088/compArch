@@ -99,9 +99,14 @@ module CTRL(
 					PCSource = 2;
 					JR = opcode == 0 && funct == `FUNCT_JR;
 				end
+				else if(opcode == `OP_BEQ || opcode == `OP_BNE) begin
+					ALUSrcA = 0;
+					ALUSrcB = 3;
+					ALUOp = `ALU_ADDU;
+				end
 				// 일반적인 ID
-				// RF에서 읽어오기
-				RegDst = (opcode == 0);
+				// RF에서 읽어오기 -> 자동?
+				
 			end
 
 			`ST_EX:  begin
@@ -110,49 +115,55 @@ module CTRL(
 				else state_next <= `ST_WB;
 
 				//branch
-				
-
-				//aluSrc
-				if(opcode != `OP_BEQ && opcode != `OP_BNE) ALUSrcA = 1;
-				if(opcode == `OP_BEQ || opcode == `OP_BNE) ALUSrcB = 3;
-				else if(opcode != 0) ALUSrcB = 2;
-
-				//opcode
-				if(opcode == 0) begin
-					case (funct)
-						`FUNCT_SLL:  ALUOp = `ALU_SLL;
-						`FUNCT_SRL:  ALUOp = `ALU_SRL;
-						`FUNCT_SRA:  ALUOp = `ALU_SRA;
-						// `FUNCT_JR:   ALUOp = ;
-						`FUNCT_ADDU: ALUOp = `ALU_ADDU;
-						`FUNCT_SUBU: ALUOp = `ALU_SUBU;
-						`FUNCT_AND:  ALUOp = `ALU_AND;
-						`FUNCT_OR:   ALUOp = `ALU_OR;
-						`FUNCT_XOR:  ALUOp = `ALU_XOR;
-						`FUNCT_NOR:  ALUOp = `ALU_NOR;
-						`FUNCT_SLT:  ALUOp = `ALU_SLT;
-						`FUNCT_SLTU: ALUOp = `ALU_SLTU;
-					endcase
+				if(opcode == `OP_BEQ || opcode == `OP_BNE) begin
+					ALUSrcA = 1;
+					ALUSrcB = 0;
+					if(opcode == `OP_BEQ) ALUOp = `ALU_EQ;
+					else ALUOp = `ALU_NEQ;
+					PCWriteCond = 1;
+					PCSource = 1;
 				end
+
+				// 일반적인 EX
 				else begin
-					case (opcode)
-						// `OP_J:    ALUOp = ;
-						// `OP_JAL:  ALUOp = ;
-						`OP_BEQ:  ALUOp = `ALU_EQ;
-						`OP_BNE:  ALUOp = `ALU_NEQ;
-						`OP_ADDIU: ALUOp = `ALU_ADDU;
-						`OP_SLTI:  ALUOp = `ALU_SLT;
-						`OP_SLTIU: ALUOp = `ALU_SLTU;
-						`OP_ANDI:  ALUOp = `ALU_AND;
-						`OP_ORI:   ALUOp = `ALU_OR;
-						`OP_XORI:  ALUOp = `ALU_XOR;
-						`OP_LUI:   ALUOp = `ALU_LUI;
-						`OP_LW:    ALUOp = `ALU_ADDU;
-						`OP_SW:    ALUOp = `ALU_ADDU;
-					endcase
-				end
+					ALUSrcA = 1;
+					if(opcode != 0) ALUSrcB = 2;
+					if(opcode == 0) begin
+						case (funct)
+							`FUNCT_SLL:  ALUOp = `ALU_SLL;
+							`FUNCT_SRL:  ALUOp = `ALU_SRL;
+							`FUNCT_SRA:  ALUOp = `ALU_SRA;
+							// `FUNCT_JR:   ALUOp = ;
+							`FUNCT_ADDU: ALUOp = `ALU_ADDU;
+							`FUNCT_SUBU: ALUOp = `ALU_SUBU;
+							`FUNCT_AND:  ALUOp = `ALU_AND;
+							`FUNCT_OR:   ALUOp = `ALU_OR;
+							`FUNCT_XOR:  ALUOp = `ALU_XOR;
+							`FUNCT_NOR:  ALUOp = `ALU_NOR;
+							`FUNCT_SLT:  ALUOp = `ALU_SLT;
+							`FUNCT_SLTU: ALUOp = `ALU_SLTU;
+						endcase
+					end
+					else begin
+						case (opcode)
+							// `OP_J:    ALUOp = ;
+							// `OP_JAL:  ALUOp = ;
+							`OP_BEQ:  ALUOp = `ALU_EQ;
+							`OP_BNE:  ALUOp = `ALU_NEQ;
+							`OP_ADDIU: ALUOp = `ALU_ADDU;
+							`OP_SLTI:  ALUOp = `ALU_SLT;
+							`OP_SLTIU: ALUOp = `ALU_SLTU;
+							`OP_ANDI:  ALUOp = `ALU_AND;
+							`OP_ORI:   ALUOp = `ALU_OR;
+							`OP_XORI:  ALUOp = `ALU_XOR;
+							`OP_LUI:   ALUOp = `ALU_LUI;
+							`OP_LW:    ALUOp = `ALU_ADDU;
+							`OP_SW:    ALUOp = `ALU_ADDU;
+						endcase
+					end
 
-				SignExtend = (opcode != `OP_ANDI) && (opcode != `OP_ORI) && (opcode != `OP_XORI);
+					SignExtend = (opcode != `OP_ANDI) && (opcode != `OP_ORI) && (opcode != `OP_XORI);
+				end
 			end
 
 			`ST_MEM: begin
@@ -162,76 +173,30 @@ module CTRL(
 				IorD = 1;
 				MemRead  = (opcode == `OP_LW);
 				MemWrite = (opcode == `OP_SW);
-
 			end
 
 			`ST_WB: begin
 				state_next <= `ST_IF;
 
-				MemtoReg = opcode == `OP_LW;
-				RegWrite = (opcode != `OP_SW) && (opcode != `OP_BEQ) && (opcode != `OP_BNE) && (opcode != `OP_J) && !((opcode == 0) && (funct == `FUNCT_JR));
-				
+				if(opcode == `OP_JAL) begin
+					PCWrite = 1;
+					PCSource = 2;
+				end
+				else begin
+					MemtoReg = opcode == `OP_LW;
+					RegWrite = (opcode != `OP_SW) && (opcode != `OP_BEQ) && (opcode != `OP_BNE) && (opcode != `OP_J) && !((opcode == 0) && (funct == `FUNCT_JR));
+					RegDst = (opcode == 0);
+				end
+
 			end
 			// 혹시나?
-			default: state_next = `ST_IF;
+			// Remove Before Flight BLF
+			default: begin
+				state_next = `ST_IF;
+				$display("[CTRL ERROR] Invalid state: %0d at time %0t", state, $time);
+			end
 		endcase
-
-
-
-
-
-
-
-
-		// 강의자료 04 - 38p
-		RegDst = opcode == 0;
-		ALUSrc = (opcode != 0) && (opcode != `OP_BEQ) && (opcode != `OP_BNE);
-		MemtoReg = opcode == `OP_LW;
-		RegWrite = (opcode != `OP_SW) && (opcode != `OP_BEQ) && (opcode != `OP_BNE) && (opcode != `OP_J) && !((opcode == 0) && (funct == `FUNCT_JR));
-		MemRead  = (opcode == `OP_LW);
-		MemWrite = (opcode == `OP_SW);
-		Jump     = (opcode == `OP_J) || (opcode == `OP_JAL) || (opcode == 0 && funct == `FUNCT_JR);
-		Branch   = (opcode == `OP_BEQ) || (opcode == `OP_BNE); // branch 컨디션 확인은 다른 코드에서?
-
-		JR = opcode == 00 && funct == `FUNCT_JR;
-		// troubleshooting
-		SignExtend = (opcode != `OP_ANDI) && (opcode != `OP_ORI) && (opcode != `OP_XORI);
-		// SignExtend = 1;
-		SavePC = opcode == `OP_JAL;
-
-		// ALUOp 
-		if(opcode == 0) begin
-			case (funct)
-				`FUNCT_SLL:  ALUOp = `ALU_SLL;
-				`FUNCT_SRL:  ALUOp = `ALU_SRL;
-				`FUNCT_SRA:  ALUOp = `ALU_SRA;
-				// `FUNCT_JR:   ALUOp = ;
-				`FUNCT_ADDU: ALUOp = `ALU_ADDU;
-				`FUNCT_SUBU: ALUOp = `ALU_SUBU;
-				`FUNCT_AND:  ALUOp = `ALU_AND;
-				`FUNCT_OR:   ALUOp = `ALU_OR;
-				`FUNCT_XOR:  ALUOp = `ALU_XOR;
-				`FUNCT_NOR:  ALUOp = `ALU_NOR;
-				`FUNCT_SLT:  ALUOp = `ALU_SLT;
-				`FUNCT_SLTU: ALUOp = `ALU_SLTU;
-			endcase
-		end
-		else begin
-			case (opcode)
-				// `OP_J:    ALUOp = ;
-				// `OP_JAL:  ALUOp = ;
-				`OP_BEQ:  ALUOp = `ALU_EQ;
-				`OP_BNE:  ALUOp = `ALU_NEQ;
-				`OP_ADDIU: ALUOp = `ALU_ADDU;
-				`OP_SLTI:  ALUOp = `ALU_SLT;
-				`OP_SLTIU: ALUOp = `ALU_SLTU;
-				`OP_ANDI:  ALUOp = `ALU_AND;
-				`OP_ORI:   ALUOp = `ALU_OR;
-				`OP_XORI:  ALUOp = `ALU_XOR;
-				`OP_LUI:   ALUOp = `ALU_LUI;
-				`OP_LW:    ALUOp = `ALU_ADDU;
-				`OP_SW:    ALUOp = `ALU_ADDU;
-			endcase
-		end
 	end
+
+	// 완!
 endmodule
