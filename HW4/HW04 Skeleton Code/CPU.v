@@ -92,15 +92,16 @@ module CPU(
 
 	//삭제됨
 	// wire Jump             - PCSource로 통합
-	// wire Branch           - PCSource로 통합
+	// wire Branch           - PCSource로 통합 
 	// wire ALUSrc           - ALUSrcA / ALUSrcB로 분리
 
 	// Define the wires
 
 	assign halt				= (inst == 32'b0);
 
-	//멀티사이클!! 할당 시작 !!! 여기서부터 구현 시작
-	// inst;
+   	// 멀티 사이클!! 할당 시작
+
+	// inst 변경
 	assign opcode = inst[31:26];
 	assign rs = inst[25:21];
 	assign rt = inst[20:16];
@@ -114,64 +115,55 @@ module CPU(
 	// trouble shooting
 	assign ext_imm = SignExtend ? {{16{immi[15]}}, immi} : {16'b0, immi};
 
-
-   	// 싱글 사이클!! 할당 시작
-
-	// inst;
-	assign opcode = inst[31:26];
-	assign rs = inst[25:21];
-	assign rt = inst[20:16];
-	assign rd = inst[15:11];
-	assign shamt = inst[10:6];
-	assign funct = inst[5:0];
-	assign immi = inst[15:0];
-	assign immj = inst[25:0];
-
-	// Sign extend the immediate 
-	// trouble shooting
-	assign ext_imm = SignExtend ? {{16{immi[15]}}, immi} : {16'b0, immi};
-
-	// RF-related wires4
+	// RF-related wires
 	assign rd_addr1 = rs;
 	assign rd_addr2 = rt;
 
 	// MEM-related wires
-	assign mem_addr = alu_result;
-	assign mem_write_data = rd_data2;
+	assign mem_addr = IorD ? ALUOut : PC;
+	assign mem_write_data = B;
 
 	// ALU-related wires
-	assign operand1 = rd_data1;
-	assign operand2 = ALUSrc ? ext_imm : rd_data2;
+	assign operand1 = ALUSrcA ? A : PC;
+	assign operand2 = (ALUSrcB <= 2'b01) ? (ALUSrcB == 2'b00 ? B : 4) : (ALUSrcB == 2'b10 ? ext_imm : ext_imm << 2);
 
 
 
 	always @(*) begin
 		wr_addr = SavePC ? 5'b11111 : (RegDst ? rd : rt);
 		// ALU 공유!!
-		wr_data = SavePC ? PC+4 : (MemtoReg ? mem_read_data : alu_result);
+		wr_data = SavePC ? PC : (MemtoReg ? mem_data_reg : ALUOut);
 
 		// Define PC
 		// PC;
 		// PC_next;
+
+		if(PCWrite || (PCWriteCond && alu_result)) begin
+			case(PCSource)
+				0: PC_next = alu_result;
+				1: PC_next = ALUOut;
+				2: PC_next = JR ? rd_data1 : {(PC[31:28]), immj, 2'b00};
+			endcase
+		end
 		
-		if(Jump)begin
-			if(JR) begin //trouble shooting
-			PC_next = rd_data1;
-			end
-			else begin
-				PC_next = {(PC[31:28]), immj, 2'b00};
-			end
-		end
-		else begin
-			if(Branch && alu_result) begin 
-				// ALU 공유!!
-				PC_next = PC + 4 + (ext_imm << 2); 
-			end
-			else begin
-				// ALU 공유!!
-				PC_next = PC + 4;
-			end
-		end
+		// if(Jump)begin
+		// 	if(JR) begin //trouble shooting
+		// 		PC_next = rd_data1;
+		// 	end
+		// 	else begin
+		// 		PC_next = {(PC[31:28]), immj, 2'b00};
+		// 	end
+		// end
+		// else begin
+		// 	if(Branch && alu_result) begin 
+		// 		// ALU 공유!!
+		// 		PC_next = PC + 4 + (ext_imm << 2); 
+		// 	end
+		// 	else begin
+		// 		// ALU 공유!!
+		// 		PC_next = PC + 4;
+		// 	end
+		// end
 
 	end
 
@@ -183,8 +175,13 @@ module CPU(
 			state <= 0;
 		end
 		else begin
-			//PC <= PC_next;
 			state <= state_next;
+			PC <= PC_next;
+			if(IRWrite) inst <= mem_read_data;
+			mem_data_reg <= mem_read_data;
+			A <= rd_data1;
+			B <= rd_data2;
+			ALUOut <= alu_result;
 		end
 	end
 	
