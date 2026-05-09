@@ -34,7 +34,7 @@ module CTRL(
 	output reg IRWrite,
 	output reg IorD,
 	output reg PCWrite,
-	output reg PCWriteCond,
+	output reg PCWriteCond
 
 	//삭제됨
 	// output reg ALUSrc
