@@ -239,6 +239,6 @@ module CPU(
 		.alu_result(alu_result)
 	);
 
-	
+
 	
 endmodule
