@@ -238,5 +238,7 @@ module CPU(
 		.funct(ALUOp),
 		.alu_result(alu_result)
 	);
+
+	//dev 테스트
 	
 endmodule
