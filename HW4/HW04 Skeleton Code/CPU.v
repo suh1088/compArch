@@ -136,13 +136,13 @@ module CPU(
 
 		// Define PC
 		// PC;
-		// PC_next;
+		PC_next = PC;// 이부분이 문제 traoubleshoot
 
-		if(PCWrite || (PCWriteCond && alu_result)) begin
+		if(PCWrite || (PCWriteCond && alu_result)) begin 
 			case(PCSource)
 				0: PC_next = alu_result;
 				1: PC_next = ALUOut;
-				2: PC_next = JR ? rd_data1 : {(PC[31:28]), immj, 2'b00};
+				2: PC_next = JR ? rd_data1 : {(PC[31:28]), immj, 2'b00};// 이부분??
 			endcase
 		end
 		

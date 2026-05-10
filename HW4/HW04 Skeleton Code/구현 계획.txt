@@ -36,7 +36,7 @@ ALU 공유
 iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v Lab04.MEM.v
 ./a.out
 
-테스트 
+테스트
 1 ㅇ
 2 ㄴ
 3 ㄴ
@@ -44,3 +44,21 @@ iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v Lab04.MEM.v
 5 ㅇ
 6 ㄴ
 7 ㅇ
+
+후보군
+브랜치
+j
+SW/lw
+BNE
+
+
+TC	핵심 테스트 대상
+1	ALU 전체 (R-type + I-type), 분기/메모리 없음
+2	BEQ / BNE 조건 분기 정확성
+3	BEQ + J 루프 반복 분기
+4	LW / SW 메모리 접근
+5	JAL / JR 서브루틴 호출·복귀
+6	LW/SW + BEQ 복합 (메모리 기반 분기)
+7	R-type 명령어 스트레스 테스트
+
+최종 문제: PC_next = PC;
