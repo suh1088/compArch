@@ -33,3 +33,14 @@ ALU 공유
 
 중간 레지스터 추가
 
+iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v Lab04.MEM.v
+./a.out
+
+테스트 
+1 ㅇ
+2 ㄴ
+3 ㄴ
+4 ㄴ
+5 ㅇ
+6 ㄴ
+7 ㅇ

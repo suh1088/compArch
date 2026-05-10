@@ -103,6 +103,7 @@ module CTRL(
 					ALUSrcA = 0;
 					ALUSrcB = 3;
 					ALUOp = `ALU_ADDU;
+					SignExtend = 1; // 수정됨
 				end
 				// 일반적인 ID
 				// RF에서 읽어오기 -> 자동?
@@ -162,6 +163,7 @@ module CTRL(
 						endcase
 					end
 
+					// 여기서 더 추가?
 					SignExtend = (opcode != `OP_ANDI) && (opcode != `OP_ORI) && (opcode != `OP_XORI);
 				end
 			end
