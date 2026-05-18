@@ -27,6 +27,33 @@ RF write
 CTRL.V
 state 제거, opcode/funct -> 제어신호 1회 생성
 
+[변경 내용]
+- 입출력
+  · 삭제 : state, state_next  (FSM 입출력 제거)
+  · 삭제 : ALUSrcA, ALUSrcB   (멀티사이클 2단계 mux -> 파이프라인은 단일 ALUSrc)
+  · 삭제 : PCSource, IRWrite, IorD, PCWrite, PCWriteCond  (멀티사이클 전용 PC/IR 제어)
+  · 추가 : ALUSrc  (0: rd_data2(B) , 1: signEx)
+  · 추가 : Branch  (BEQ/BNE 인 경우 1, MEM 단계 PCSrc = Branch & ALU_zero)
+  · 유지 : MemRead, MemtoReg, MemWrite, SignExtend, RegWrite, ALUOp, RegDst
+  · 유지 : JR, SavePC  (회로도 외 신호지만 JR/JAL ISA 지원 위해 보존)
+
+- 동작
+  · case(state) FSM 제거 -> case(opcode) 조합논리 디코더로 변경
+  · 한 cycle 에 해당 명령의 EX/MEM/WB 전 단계 제어신호 동시 생성
+    -> 외부에서 ID/EX, EX/MEM, MEM/WB 파이프라인 레지스터로 단계별 전달
+  · 기본값 0 으로 초기화 후 opcode 별로 필요한 신호만 set
+
+- opcode 별 신호 요약
+  · R-type (JR 제외) : RegDst=1, RegWrite=1, ALUSrc=0, ALUOp=funct
+  · JR    : JR=1  (PC <- rs 는 외부에서)
+  · J     : 신호 없음 (PC 변경은 외부)
+  · JAL   : SavePC=1, RegWrite=1
+  · BEQ/BNE : Branch=1, ALUOp=EQ/NEQ, SignExtend=1
+  · I-ALU (ADDIU/SLTI/SLTIU/LUI) : RegWrite=1, ALUSrc=1, SignExtend=1
+  · I-ALU (ANDI/ORI/XORI)        : RegWrite=1, ALUSrc=1, SignExtend=0  (zero-ext)
+  · LW    : RegWrite=1, ALUSrc=1, ALUOp=ADDU, SignExtend=1, MemRead=1, MemtoReg=1
+  · SW    : ALUSrc=1, ALUOp=ADDU, SignExtend=1, MemWrite=1
+
 CPU.V
 파이프라인 레지스터 추가 (IF/ID, ID/EX, EX/MEM, MEM/WB)
 각 단계 사이 latch
