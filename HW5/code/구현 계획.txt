@@ -1,0 +1,73 @@
+HW5 구현 계획
+- 기본적인 파이프라인 CPU 구현
+- HW4 의 내용을 수정
+- 중간 단계 latch 중요
+
+branch not taken
+
+
+각 단계별 추가되는 연산
+IF
+PC fetch, PC+4
+
+ID
+inst 디코드, RF read, CTRL, sign ext
+
+EX
+ALU 연산, 분기 판정 및 주소 계산
+
+MEM
+LW / SW
+
+WB
+RF write
+
+
+각 모듈
+CTRL.V
+state 제거, opcode/funct -> 제어신호 1회 생성
+
+CPU.V
+파이프라인 레지스터 추가 (IF/ID, ID/EX, EX/MEM, MEM/WB)
+각 단계 사이 latch
+
+HAZARD.v
+forwarding - EX/MEM, MEM/WB -> EX
+stall      - load-use 1 cycle bubble
+flush      - branch/jump taken 시 IF/ID 비우기
+
+
+실행
+iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v MEM.v HAZARD.v
+./a.out
+
+테스트
+1
+2
+3
+4
+5
+6
+7
+
+구현 전 알아야 하는 내용
+- branch not taken 예측 사용 (분기 결정은 EX 에서)
+  taken 일 때만 IF/ID flush, PC <- 분기 주소
+
+- forwarding 우선순위 : EX/MEM > MEM/WB
+  대상 reg != 0 이고 RegWrite=1 일 때만
+
+- load-use : ID/EX.MemRead && ID/EX.rt == IF/ID.rs/rt
+  PC, IF/ID 정지 + ID/EX 를 NOP (bubble)
+
+- RF 내부 포워딩 : 같은 cycle 에서 WB 쓰고 ID 읽으면
+  새 값이 읽히도록 (앞 반 cycle write, 뒤 반 cycle read)
+  안되면 추가 forwarding 필요
+
+- JAL : $31 에 PC+4 저장, RegWrite=1, wr_addr=31
+- JR  : rs 값을 PC 로, ID 에서 결정 -> 뒤 1개 flush
+- J / JAL / branch 모두 taken 시 IF/ID flush
+
+- halt 조건 (inst == 0) 은 IF/ID 단계 기준으로 확인
+
+- bubble = 모든 control 신호 0 으로
