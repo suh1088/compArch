@@ -64,7 +64,7 @@ module CPU(
 
 	// state 추가!!!!
 	reg [2:0] state;
-	wire [2:0] state_next;  // (reg → wire 변경) 이부분 다시한번 확인
+	wire [2:0] state_next;  // (reg -> wire 변경) 이부분 다시한번 확인
 
 	// 멀티사이클을 위한 중간 래지스터
 	reg [31:0]		inst;
@@ -127,15 +127,11 @@ module CPU(
 	assign operand1 = ALUSrcA ? A : PC;
 	assign operand2 = (ALUSrcB <= 2'b01) ? (ALUSrcB == 2'b00 ? B : 4) : (ALUSrcB == 2'b10 ? ext_imm : ext_imm << 2);
 
-
-
 	always @(*) begin
 		wr_addr = SavePC ? 5'b11111 : (RegDst ? rd : rt);
 		// ALU 공유!!
 		wr_data = SavePC ? PC : (MemtoReg ? mem_data_reg : ALUOut);
 
-		// Define PC
-		// PC;
 		PC_next = PC;// 이부분이 문제 traoubleshoot
 
 		if(PCWrite || (PCWriteCond && alu_result)) begin 
@@ -145,26 +141,6 @@ module CPU(
 				2: PC_next = JR ? rd_data1 : {(PC[31:28]), immj, 2'b00};// 이부분??
 			endcase
 		end
-		
-		// if(Jump)begin
-		// 	if(JR) begin //trouble shooting
-		// 		PC_next = rd_data1;
-		// 	end
-		// 	else begin
-		// 		PC_next = {(PC[31:28]), immj, 2'b00};
-		// 	end
-		// end
-		// else begin
-		// 	if(Branch && alu_result) begin 
-		// 		// ALU 공유!!
-		// 		PC_next = PC + 4 + (ext_imm << 2); 
-		// 	end
-		// 	else begin
-		// 		// ALU 공유!!
-		// 		PC_next = PC + 4;
-		// 	end
-		// end
-
 	end
 
 

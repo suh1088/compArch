@@ -85,7 +85,6 @@ module CTRL(
 				else if(opcode == `OP_JAL) state_next <= `ST_WB;
 				else state_next <= `ST_EX;
 
-
 				// JAL
 				// 현재 PC값 저장
 				if(opcode == `OP_JAL) begin
