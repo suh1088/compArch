@@ -58,10 +58,90 @@ CPU.V
 파이프라인 레지스터 추가 (IF/ID, ID/EX, EX/MEM, MEM/WB)
 각 단계 사이 latch
 
+[변경 내용]
+- 신호 / 레지스터
+  · 삭제 : state, state_next                            (FSM)
+  · 삭제 : inst, mem_data_reg, A, B, ALUOut             (멀티사이클 IR/래치)
+  · 삭제 : ALUSrcA, ALUSrcB, PCSource, IRWrite, IorD,
+           PCWrite(CTRL의), PCWriteCond                 (멀티사이클 전용)
+  · 추가 : ALUSrc, Branch                               (CTRL 새 신호)
+  · 추가 : if_inst_addr, if_inst, if_pc_plus4           (IF 단계 신호)
+  · 추가 : 파이프라인 레지스터 ifid_*, idex_*, exmem_*, memwb_*
+  · 추가 : HAZARD 신호 PCWrite, IFIDWrite, IDEX_bubble, IFID_flush, ForwardA/B
+
+- 파이프라인 레지스터 구성
+  · IF/ID  : pc_plus4, inst
+  · ID/EX  : WB(RegWrite,MemtoReg,SavePC) , M(MemRead,MemWrite,Branch) ,
+             EX(RegDst,ALUOp,ALUSrc) , pc_plus4, rd_data1, rd_data2, ext_imm,
+             shamt, rs, rt, rd
+  · EX/MEM : WB , M , pc_plus4, branch_target, alu_result, rd_data2, wr_addr
+  · MEM/WB : WB , pc_plus4, mem_read_data, alu_result, wr_addr
+
+- stage 별 동작
+  · IF  : if_pc_plus4 = PC+4 , if_inst_addr = PC -> MEM.inst 포트 read
+  · ID  : ifid_inst 디코드, RF read, sign ext,
+          J/JAL/JR 조기 결정 (id_jump_taken / id_jump_addr)
+  · EX  : operand1 = idex_rd_data1
+          operand2 = idex_ALUSrc ? idex_ext_imm : idex_rd_data2
+          ex_branch_target = idex_pc_plus4 + (idex_ext_imm << 2)
+          ex_wr_addr       = SavePC ? 31 : (RegDst ? rd : rt)
+  · MEM : mem_addr = exmem_alu_result , mem_write_data = exmem_rd_data2
+          mem_branch_taken = exmem_Branch & exmem_alu_result[0]
+  · WB  : wr_data = SavePC ? pc_plus4 : (MemtoReg ? mem_data : alu_result)
+
+- PC / 플러시
+  · PC_next : branch_taken > jump_taken > PC+4 우선순위
+  · mem_flush_all = mem_branch_taken : IF/ID, ID/EX, EX/MEM 모두 NOP (3 bubble)
+  · id_flush_if   = id_jump_taken    : IF/ID NOP (1 bubble)
+  · IFID_flush (HAZARD) : IF/ID NOP
+  · IDEX_bubble (HAZARD) : ID/EX NOP (load-use 스톨용)
+
+- 모듈 인스턴스 변경
+  · CTRL : state/ALUSrcA/B/PCSource/IRWrite/IorD/PCWrite/PCWriteCond 제거,
+           ALUSrc/Branch 연결
+  · RF   : RegWrite, wr_addr, wr_data 모두 MEM/WB 신호로
+  · MEM  : IF 포트(inst_addr, inst) 추가 연결,
+           mem_addr/MemWrite/mem_write_data 는 EX/MEM 신호
+  · ALU  : shamt, funct 모두 ID/EX 신호
+  · HAZARD : 신규 추가 (skeleton 상태)
+
+- 기타
+  · halt 조건 : inst -> ifid_inst 기준
+  · RF 내부 포워딩 : RF.v 의 sync write + async read 로 자동 처리
+
 HAZARD.v
 forwarding - EX/MEM, MEM/WB -> EX
 stall      - load-use 1 cycle bubble
 flush      - branch/jump taken 시 IF/ID 비우기
+
+[변경 내용]
+- 포워딩
+  · HW5 basic 은 포워딩 미지원 -> ForwardA = ForwardB = 2'b00 고정
+  · 향후 확장용 자리만 남김 (EX/MEM > MEM/WB 우선순위 주석)
+
+- 데이터 해저드 검출 (포워딩 없음 기준)
+  · idex_hazard  = idex_RegWrite  && idex_wr_addr  != 0
+                   && (idex_wr_addr  == ifid_rs || idex_wr_addr  == ifid_rt)
+  · exmem_hazard = exmem_RegWrite && exmem_wr_addr != 0
+                   && (exmem_wr_addr == ifid_rs || exmem_wr_addr == ifid_rt)
+  · data_hazard  = idex_hazard | exmem_hazard
+  · MEM/WB -> ID 는 RF 내부 포워딩으로 자동 해결 -> 검사 안함
+  · load-use 도 포워딩 없으니 결국 위의 data_hazard 에 포함 -> 별도 분기 X
+
+- 스톨 동작
+  · data_hazard = 1 :
+      PCWrite = 0, IFIDWrite = 0, IDEX_bubble = 1
+      -> PC/IF/ID 정지, 같은 명령 재 ID
+      -> ID/EX 에 NOP 주입
+  · data_hazard = 0 : 모두 1, 0 (정상 진행)
+
+- 플러시
+  · IFID_flush = branch_taken | jump_taken
+  · CPU.v 의 mem_flush_all, id_flush_if 와 OR 되어 동작 (중복 OK)
+
+- 주의
+  · wr_addr != 0 조건으로 $0 쓰기는 의존성으로 보지 않음
+  · idex_MemRead 는 결국 안 쓰게 됨 (포워딩 추가 시 load-use 분리할 때 사용)
 
 
 실행
@@ -69,13 +149,13 @@ iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v MEM.v HAZARD.v
 ./a.out
 
 테스트
-1
-2
-3
-4
-5
-6
-7
+1 ㅇ
+2 ㅇ
+3 ㅇ
+4 ㅇ
+5 ㅇ
+6 ㅇ
+7 ㅇ
 
 구현 전 알아야 하는 내용
 - branch not taken 예측 사용 (분기 결정은 EX 에서)
@@ -98,3 +178,132 @@ iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v MEM.v HAZARD.v
 - halt 조건 (inst == 0) 은 IF/ID 단계 기준으로 확인
 
 - bubble = 모든 control 신호 0 으로
+
+troubleshooting
+
+[1] halt 가 점프/분기 직후에 spurious 하게 trigger
+  증상 : 첫 J/JAL/JR/branch taken 직후 halt=1 -> testbench 가 너무 일찍 종료
+  원인 : flush 시 ifid_inst <= 0 인데 halt = (ifid_inst == 0) 으로 검사
+         프로그램 끝 (ifid_inst=0) 과 flush bubble (ifid_inst=0) 을 구분 못함
+  해결 : flush 시 ifid_inst <= 0x00000020 (NOP = ADDU $0,$0,$0) 으로 채움
+         + halt 는 ifid_inst==0 이 4 cycle 연속 지속될 때만 assert (drain counter)
+  위치 : CPU.v   ifid_inst <= 32'h00000020 (flush 분기)
+                 reg [2:0] halt_drain ; assign halt = (halt_drain >= 4)
+
+
+[2] JR/J/JAL 이 stall 중에 IF/ID flush 되어 명령어가 사라짐
+  증상 : JR rs 가 직전 명령에 의존하면 stall 발생,
+         동시에 id_jump_taken=1 이라 IF/ID flush -> JR 자체가 NOP 으로 변함
+  원인 : id_flush_if = id_jump_taken 으로 무조건 flush
+         stall 중에는 PC 가 안 움직이는데도 flush 되어 점프 사라짐
+  해결 : id_flush_if = id_jump_taken & PCWrite
+         PCWrite=0 (stall) 일 땐 flush 안함 -> JR 유지, 다음 cycle 재시도
+  위치 : CPU.v   wire id_flush_if = id_jump_taken & PCWrite
+
+
+[3] branch taken 과 data hazard 동시 발생 시 PC 갱신 실패
+  증상 : 분기 taken 인데 ID 에 stall 있으면 PCWrite=0 -> PC 가 branch target 으로
+         업데이트 안됨. 다음 cycle 에 EX/MEM 이 flush 되어 branch_target 정보 손실
+  원인 : if (PCWrite) PC <= PC_next 만 검사
+  해결 : if (PCWrite | mem_branch_taken) PC <= PC_next
+         branch taken 은 stall 무시하고 PC 갱신
+  위치 : CPU.v   PC 갱신 조건에 mem_branch_taken OR
+
+
+[4] 파이프라인 drain 못 하고 testbench 종료
+  증상 : PC 가 프로그램 끝 (memory[PC]=0) 도달 시 halt 즉시 assert
+         하지만 EX/MEM/WB 에 마지막 3~4 개 real 명령어 남아있어 WB 미완료
+         testbench 가 register_file/memory 비교 시 마지막 effect 빠진 채로 검사
+  원인 : halt=(ifid_inst==0) 으로 즉시 trigger
+  해결 : drain counter 로 4 cycle 지연
+         (last inst 가 IF -> WB 까지 4 cycle 걸리므로 충분)
+  위치 : [1] 과 동일
+
+
+[5] RF 내부 포워딩 누락 (가장 큰 버그)
+  증상 : load-use 에서 2 cycle stall 후에도 nextInst 가 OLD 값 읽음
+         3-apart hazard (ADDU $1 ... 2 inst ... SUBU using $1) 에서 stall 안하는데
+         SUBU 가 OLD $1 읽음
+  원인 : Verilog posedge 타이밍 -
+            posedge 에서 모든 RHS 가 동시 sample (write 이전 값)
+            -> ID 의 RF read 는 OLD 값 sample
+            -> 같은 posedge 에 RF write 일어나지만 이미 OLD 가 latch 됨
+         결국 WB 와 ID 가 같은 cycle 에 겹치면 OLD 값 사용
+  해결 : RF.v 의 async read 에 내부 포워딩 bypass 추가
+            RegWrite && rd_addr == wr_addr && wr_addr != 0 일 때
+            rd_data = wr_data (RF 안 거치고 직접)
+         + $0 보호 (wr_addr=0 write skip)
+  위치 : RF.v   always @(*) read 부분 + posedge 의 write 조건
+
+
+[해결 후 확인]
+- iverilog 로 7 testcase 전부 돌려서 통과 확인
+- 실패 시 testbench 의 $display 로 어느 register/memory 가 mismatch 인지 봐야 함
+
+
+
+과제 명세 파일에 제시된 회로도와의 차이점
+
+[1] 분기 결정 위치
+  회로도 : EX/MEM 의 Branch 신호와 ALU Zero 출력을 AND -> PCSrc
+           즉 MEM 단계에서 결정 (3 bubble)
+  구현   : 동일하게 MEM 단계 결정
+           mem_branch_taken = exmem_Branch & exmem_alu_result[0]
+           taken 시 IF/ID, ID/EX, EX/MEM 3 stage flush
+  비고   : 명세는 "EX 에서 early resolution 도 허용" 이라 했지만
+           회로도 기준 그대로 MEM 단계 결정 채택
+
+
+[2] 점프 (J / JAL / JR) 처리
+  회로도 : J/JAL/JR 자체가 명시 안됨 (기본 MIPS 회로도는 ISA 일부만)
+  구현   : ID 단계에서 조기 결정 (id_jump_taken, id_jump_addr)
+           taken 시 IF/ID 1 stage flush
+           JR 은 rd_data1 을 PC 로 직접 사용
+           JAL 은 SavePC=1 로 idex_pc_plus4 가 WB 에서 $31 에 기록
+  이유   : HW3/HW4 부터 지원했던 ISA, 회로도엔 없지만 보존
+
+
+[3] 인스트럭션 메모리 / 데이터 메모리
+  회로도 : Instruction memory 와 Data memory 가 별도 블록으로 그려짐
+  구현   : 단일 MEM 모듈 (HW3 제공) 의 dual-port 사용
+           inst_addr / inst       : IF 단계 포트
+           mem_addr / mem_*       : MEM 단계 포트
+           실제로는 같은 memory 배열을 두 포트로 read/write
+  비고   : 명세 "IF 와 MEM 자원 공유 금지" 는 포트 분리로 충족
+           (한 단계 안에서 두 명령어가 동시 access 가능하므로)
+
+
+[4] HAZARD 모듈
+  회로도 : 명시 안됨 (텍스트에서 "Add hazard detection module" 만 언급)
+  구현   : HAZARD.v 신규 추가
+           파이프라인 레지스터 신호 + IF/ID rs/rt 받아서 stall/flush 출력
+  이유   : 명세 텍스트에서 명시적으로 요구
+
+
+[5] RF 내부 포워딩
+  회로도 : 표시 안됨 (Registers 블록만 그려짐)
+  구현   : RF.v 의 async read 에 bypass 추가
+           RegWrite && rd_addr == wr_addr && wr_addr != 0 일 때 wr_data 직접 반환
+  이유   : 회로도 외 디테일이지만 같은 cycle WB/ID 충돌 해결에 필요
+           (텍스트북 파이프라인의 표준 전제)
+
+
+[6] halt drain counter
+  회로도 : halt 신호 자체가 회로도엔 없음 (testbench 종료용)
+  구현   : reg [2:0] halt_drain 추가 + halt = (halt_drain >= 4)
+  이유   : ifid_inst==0 즉시 halt 시키면 파이프라인 마지막 명령어 drain 안됨
+           회로도 외 simulation 종료 처리용 보조 회로
+
+
+[7] PCSrc / 분기 신호 mux 구조
+  회로도 : PC mux 는 (PC+4) , (branch_target) 둘 중 선택 (PCSrc 로)
+  구현   : 3 입력 우선순위 mux 사용
+           branch_taken > jump_taken > PC+4
+           (회로도에 없는 jump_taken 경로 추가 - J/JAL/JR 지원 위해)
+
+
+[8] 그 외 CTRL 신호 차이
+  회로도 : ALUOp 는 2 비트 (ALU control 이 funct 와 결합해 4비트 alu_funct 생성)
+  구현   : ALUOp 4 비트 직접 사용 (CTRL 에서 funct 까지 디코드)
+           ALU control 모듈 없이 CTRL 이 통합
+  이유   : HW4 까지의 구조 그대로 유지 (회로도와 분할 방식만 다를 뿐 기능 동등)

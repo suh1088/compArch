@@ -180,7 +180,11 @@ module CPU(
 
 	// 변경됨 (halt 조건은 IF/ID 단계의 inst 기준)
 	// assign halt				= (inst == 32'b0);
-	assign halt				= (ifid_inst == 32'b0);
+	// 변경됨 : ifid_inst==0 즉시 halt 시키면 EX/MEM/WB 의 마지막 명령어 drain 안됨
+	// drain counter 로 4 cycle 기다린 뒤 halt assert  // troubleshooting
+	// assign halt				= (ifid_inst == 32'b0);
+	reg [2:0] halt_drain;	// troubleshooting
+	assign halt = (halt_drain >= 3'd4);	// troubleshooting
 
    	// 멀티 사이클!! 할당 시작  -> 파이프라인 stage 별로 재배치
 
@@ -280,7 +284,17 @@ module CPU(
 
 	// 플러시 신호  추가됨!
 	wire mem_flush_all = mem_branch_taken;	// 분기 taken : IF/ID, ID/EX, EX/MEM NOP
-	wire id_flush_if   = id_jump_taken;		// 점프 taken : IF/ID NOP
+	// 변경됨 : stall 중에 JR/J/JAL flush 되면 명령어 사라짐 -> PCWrite 와 AND  // troubleshooting
+	wire id_flush_if   = id_jump_taken & PCWrite;	// 점프 taken : IF/ID NOP
+
+	// halt drain counter  // troubleshooting
+	// ifid_inst==0 이 지속되는 동안 증가, 그 외엔 0 으로 리셋
+	// flush 는 NOP(0x20)로 채우므로 진짜 PC 가 0 inst 위치 도달했을 때만 증가
+	always @(posedge clk) begin	// troubleshooting
+		if (rst)                        halt_drain <= 0;
+		else if (ifid_inst == 32'b0)    halt_drain <= halt_drain + 1;
+		else                            halt_drain <= 0;
+	end
 
 
 	// Update the Clock
@@ -321,12 +335,15 @@ module CPU(
 			// ALUOut <= alu_result;
 
 			// PC  추가됨!
-			if (PCWrite) PC <= PC_next;
+			// 변경됨 : branch taken 은 stall 무시하고 PC 갱신 (branch target 손실 방지)  // troubleshooting
+			if (PCWrite | mem_branch_taken) PC <= PC_next;
 
 			// IF/ID  추가됨!
+			// 변경됨 : flush 시 0 대신 NOP(ADDU $0,$0,$0=0x00000020) 사용
+			// 이유 : halt=(ifid_inst==0) 인데 flush 가 0 넣으면 spurious halt trigger  // troubleshooting
 			if (mem_flush_all | id_flush_if | IFID_flush) begin
 				ifid_pc_plus4 <= 0;
-				ifid_inst     <= 0;
+				ifid_inst     <= 32'h00000020;	// NOP  // troubleshooting
 			end
 			else if (IFIDWrite) begin
 				ifid_pc_plus4 <= if_pc_plus4;
