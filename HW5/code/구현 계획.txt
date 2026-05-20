@@ -38,10 +38,11 @@ state 제거, opcode/funct -> 제어신호 1회 생성
   · 유지 : JR, SavePC  (회로도 외 신호지만 JR/JAL ISA 지원 위해 보존)
 
 - 동작
-  · case(state) FSM 제거 -> case(opcode) 조합논리 디코더로 변경
+  · case(state) FSM 제거 -> 조합논리 디코더로 변경
   · 한 cycle 에 해당 명령의 EX/MEM/WB 전 단계 제어신호 동시 생성
     -> 외부에서 ID/EX, EX/MEM, MEM/WB 파이프라인 레지스터로 단계별 전달
-  · 기본값 0 으로 초기화 후 opcode 별로 필요한 신호만 set
+  · 각 제어신호를 opcode/funct 의 boolean 식으로 직접 정의 (HW3/HW4 방식)
+  · ALUOp 만 if(opcode==0) / else 분기 + 내부 case 로 디코드
 
 - opcode 별 신호 요약
   · R-type (JR 제외) : RegDst=1, RegWrite=1, ALUSrc=0, ALUOp=funct
@@ -67,7 +68,7 @@ CPU.V
   · 추가 : ALUSrc, Branch                               (CTRL 새 신호)
   · 추가 : if_inst_addr, if_inst, if_pc_plus4           (IF 단계 신호)
   · 추가 : 파이프라인 레지스터 ifid_*, idex_*, exmem_*, memwb_*
-  · 추가 : HAZARD 신호 PCWrite, IFIDWrite, IDEX_bubble, IFID_flush, ForwardA/B
+  · 추가 : HAZARD 신호 PCWrite, IFIDWrite, IDEX_bubble, IFID_flush
 
 - 파이프라인 레지스터 구성
   · IF/ID  : pc_plus4, inst
@@ -116,8 +117,8 @@ flush      - branch/jump taken 시 IF/ID 비우기
 
 [변경 내용]
 - 포워딩
-  · HW5 basic 은 포워딩 미지원 -> ForwardA = ForwardB = 2'b00 고정
-  · 향후 확장용 자리만 남김 (EX/MEM > MEM/WB 우선순위 주석)
+  · HW5 basic 은 포워딩 미지원 -> ForwardA/B 포트 자체 제거
+  · 향후 확장 시 EX/MEM > MEM/WB 우선순위로 추가 예정 (주석으로만 표시)
 
 - 데이터 해저드 검출 (포워딩 없음 기준)
   · idex_hazard  = idex_RegWrite  && idex_wr_addr  != 0
@@ -161,7 +162,7 @@ iverilog CPU_tb.v CPU.v CTRL.v ALU.v RF.v MEM.v HAZARD.v
 - branch not taken 예측 사용 (분기 결정은 EX 에서)
   taken 일 때만 IF/ID flush, PC <- 분기 주소
 
-- forwarding 우선순위 : EX/MEM > MEM/WB
+- forwarding 우선순위 : EX/MEM >ㅁ MEM/WB
   대상 reg != 0 이고 RegWrite=1 일 때만
 
 - load-use : ID/EX.MemRead && ID/EX.rt == IF/ID.rs/rt
@@ -286,14 +287,6 @@ troubleshooting
            RegWrite && rd_addr == wr_addr && wr_addr != 0 일 때 wr_data 직접 반환
   이유   : 회로도 외 디테일이지만 같은 cycle WB/ID 충돌 해결에 필요
            (텍스트북 파이프라인의 표준 전제)
-
-
-[6] halt drain counter
-  회로도 : halt 신호 자체가 회로도엔 없음 (testbench 종료용)
-  구현   : reg [2:0] halt_drain 추가 + halt = (halt_drain >= 4)
-  이유   : ifid_inst==0 즉시 halt 시키면 파이프라인 마지막 명령어 drain 안됨
-           회로도 외 simulation 종료 처리용 보조 회로
-
 
 [7] PCSrc / 분기 신호 mux 구조
   회로도 : PC mux 는 (PC+4) , (branch_target) 둘 중 선택 (PCSrc 로)
