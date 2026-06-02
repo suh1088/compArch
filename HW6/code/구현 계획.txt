@@ -1,0 +1,10 @@
+HW5 구현 계획
+- forwarding
+- BTB
+
+I. forwarding
+ex/mem -> alu
+mem/WB -> alu
+
+
+II. BTB
